@@ -22,9 +22,9 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Home",
+          title: "Feed",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home-outline" color={color} size={size} />
+            <Ionicons name="newspaper-outline" color={color} size={size} />
           ),
         }}
       />
@@ -38,20 +38,20 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="partners"
-        options={{
-          title: "Partners",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="people-outline" color={color} size={size} />
-          ),
-        }}
-      />
-      <Tabs.Screen
         name="compete"
         options={{
           title: "Runs",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="stopwatch-outline" color={color} size={size} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="horses"
+        options={{
+          title: "Horses",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="paw-outline" color={color} size={size} />
           ),
         }}
       />
