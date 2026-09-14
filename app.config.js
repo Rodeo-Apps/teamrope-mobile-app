@@ -33,6 +33,9 @@ module.exports = {
     plugins: ['expo-router', 'expo-video'],
     experiments: { typedRoutes: true },
     extra: {
+      eas: {
+        projectId: "29d91d8f-50e2-4bd4-9026-1f4b2841fb45"
+      },
       domain: "teamrope.pro",
       eventType: "teamroping",
     },
