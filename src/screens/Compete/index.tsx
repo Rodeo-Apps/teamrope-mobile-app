@@ -14,11 +14,38 @@ import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { colors, spacing, radius } from '@/constants/theme';
+import {
+  scoreTeamRopingRun,
+  loadRulesProfile,
+  formatTime,
+  type HeadCatch,
+  type HeelCatch,
+} from '@/lib/scoring';
+
+// Team roping is scored under the PRCA rule book on the shared rule sets.
+const ASSOCIATION_CODE = 'PRCA';
+const EVENT_TYPE = 'team_roping';
+
+// Map the practice-log chips onto the engine's catch vocabulary.
+const HEAD_CATCH_MAP: Record<string, HeadCatch> = {
+  clean: 'both_horns',
+  illegal: 'horn_hondo_cross',
+  no_catch: 'no_catch',
+};
+const HEEL_CATCH_MAP: Record<string, HeelCatch> = {
+  two_feet: 'two_feet',
+  one_foot: 'one_foot',
+  no_catch: 'no_catch',
+};
 
 type Run = {
   id: string;
   created_at: string;
   time_seconds: number | string | null;
+  raw_time_ms: number | null;
+  official_time_ms: number | null;
+  penalty_seconds: number | string | null;
+  status: string | null;
   notes: string | null;
 };
 
@@ -74,9 +101,57 @@ export function CompeteScreen() {
   const handleSave = async () => {
     if (!user) return;
     setSaving(true);
+
+    const rawTimeMs = time_seconds ? Math.round(Number(time_seconds) * 1000) : null;
+
+    const profile = await loadRulesProfile(ASSOCIATION_CODE, EVENT_TYPE);
+    if (!profile) {
+      setSaving(false);
+      Alert.alert(
+        'No rule set',
+        `No ${ASSOCIATION_CODE} rules are seeded for team roping. Cannot score the run.`,
+      );
+      return;
+    }
+
+    let outcome;
+    try {
+      outcome = scoreTeamRopingRun({
+        rawTimeMs,
+        headCatch: HEAD_CATCH_MAP[header_catch_type] ?? 'no_catch',
+        heelCatch: HEEL_CATCH_MAP[heeler_catch_type] ?? 'no_catch',
+        frontFootFreedBeforeTime: false,
+        barrierBroken: header_barrier_broken || heeler_barrier_broken,
+        heelLoopReleasedBeforeTow: false,
+        heelLoopContactBeforeTow: false,
+        bothDallied: true,
+        bothFaced: true,
+        bothMounted: true,
+        steerStanding: true,
+        headerTiedOn: false,
+        heelerTiedOn: false,
+        heelerTieOnEligible: true,
+        rulesProfile: profile,
+      });
+    } catch (e: any) {
+      setSaving(false);
+      Alert.alert('Could not score run', e?.message ?? 'Scoring engine error.');
+      return;
+    }
+
+    const officialTimeMs = outcome.officialTimeMs ?? null;
+    const penaltySeconds = outcome.appliedPenalties.reduce(
+      (sum, p) => sum + (p.seconds ?? 0),
+      0,
+    );
+
     const payload = {
       user_id: user.id,
-      time_seconds: time_seconds ? Number(time_seconds) : null,
+      rule_set_id: profile.ruleSetId,
+      raw_time_ms: rawTimeMs,
+      official_time_ms: officialTimeMs,
+      // time_seconds mirrors the penalty-adjusted official time; stats read it.
+      time_seconds: officialTimeMs != null ? Math.round(officialTimeMs) / 1000 : null,
       header_name: header_name || null,
       heeler_name: heeler_name || null,
       header_handicap: header_handicap ? Number(header_handicap) : null,
@@ -85,7 +160,8 @@ export function CompeteScreen() {
       heeler_barrier_broken,
       header_catch_type,
       heeler_catch_type,
-      penalty_seconds: penalty_seconds ? Number(penalty_seconds) : null,
+      penalty_seconds: penaltySeconds || null,
+      status: outcome.status,
       notes: notes || null,
     };
     const { error } = await supabase.from('teamrope_runs').insert(payload);
@@ -94,6 +170,10 @@ export function CompeteScreen() {
       Alert.alert('Could not save', error.message);
       return;
     }
+    Alert.alert(
+      officialTimeMs != null ? `${formatTime(officialTimeMs)}s` : outcome.status.replace(/_/g, ' '),
+      outcome.explanation,
+    );
     resetForm();
     setShowForm(false);
     loadRuns();
@@ -254,13 +334,24 @@ export function CompeteScreen() {
       ) : runs.length === 0 ? (
         <Text style={cs.empty}>Nothing logged yet. Log your first team roping run above.</Text>
       ) : (
-        runs.map((run) => (
-          <View key={run.id} style={cs.runCard}>
-            <Text style={cs.runPrimary}>{String(run.time_seconds ?? '—')}</Text>
-            <Text style={cs.runDate}>{new Date(run.created_at).toLocaleDateString()}</Text>
-            {run.notes ? <Text style={cs.runNotes}>{run.notes}</Text> : null}
-          </View>
-        ))
+        runs.map((run) => {
+          const noTime = run.status === 'no_time' || run.status === 'dq';
+          const official =
+            run.official_time_ms != null ? formatTime(run.official_time_ms) : run.time_seconds;
+          const penalty = run.penalty_seconds ? Number(run.penalty_seconds) : 0;
+          return (
+            <View key={run.id} style={cs.runCard}>
+              <Text style={cs.runPrimary}>
+                {noTime ? (run.status ?? '').replace(/_/g, ' ') : `${official ?? '—'}s`}
+              </Text>
+              {!noTime && penalty > 0 ? (
+                <Text style={cs.runPenalty}>includes +{penalty}s penalty</Text>
+              ) : null}
+              <Text style={cs.runDate}>{new Date(run.created_at).toLocaleDateString()}</Text>
+              {run.notes ? <Text style={cs.runNotes}>{run.notes}</Text> : null}
+            </View>
+          );
+        })
       )}
     </ScrollView>
   );
@@ -295,6 +386,7 @@ const cs = StyleSheet.create({
   empty: { color: colors.muted, textAlign: 'center', marginTop: 24, fontSize: 14 },
   runCard: { backgroundColor: colors.card, borderRadius: radius.card, padding: spacing.cardPad, gap: 4, borderWidth: 1, borderColor: colors.border },
   runPrimary: { fontSize: 18, fontWeight: '700', color: colors.text },
+  runPenalty: { fontSize: 12, color: colors.accent, fontWeight: '600' },
   runDate: { fontSize: 12, color: colors.muted },
   runNotes: { fontSize: 14, color: colors.muted, marginTop: 4 },
 });
