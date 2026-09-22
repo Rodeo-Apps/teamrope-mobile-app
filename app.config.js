@@ -17,6 +17,7 @@ module.exports = {
       supportsTablet: true,
       bundleIdentifier: "pro.teamrope.app",
       infoPlist: {
+        ITSAppUsesNonExemptEncryption: false,
         NSCameraUsageDescription: 'Record your runs so TeamRope can analyse them.',
         NSMicrophoneUsageDescription: 'Capture audio alongside your run video.',
         NSPhotoLibraryUsageDescription: 'Pick a run video to analyse.',
@@ -33,6 +34,9 @@ module.exports = {
     plugins: ['expo-router', 'expo-video'],
     experiments: { typedRoutes: true },
     extra: {
+      eas: {
+        projectId: "29d91d8f-50e2-4bd4-9026-1f4b2841fb45"
+      },
       domain: "teamrope.pro",
       eventType: "teamroping",
     },
